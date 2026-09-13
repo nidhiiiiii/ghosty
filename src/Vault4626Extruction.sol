@@ -27,6 +27,7 @@ contract Vault4626Extruction is IExtruction, IStaticExtruction, IExtructionV102,
     error MalformedConfig();
     error InvalidVault(address vault);
     error InvalidAsset(address asset);
+    error SelfReferentialAsset(address vault);
     error InvalidSpread(uint256 spreadBps);
     error InvalidBounds(uint256 minRate, uint256 maxRate);
     error InvalidShareDecimals(uint8 decimals);
@@ -34,6 +35,7 @@ contract Vault4626Extruction is IExtruction, IStaticExtruction, IExtructionV102,
     error RateOutOfBounds(uint256 rate, uint256 minRate, uint256 maxRate);
     error UnsupportedPair(address tokenIn, address tokenOut, address vault, address asset);
     error RecomputeDetected(bool isExactIn, uint256 populatedAmount);
+    error ZeroSpecifiedAmount(bool isExactIn);
     error AmountRoundsToZero(uint256 specifiedAmount);
     error InsufficientLiquidity(uint256 requested, uint256 available);
 
@@ -109,6 +111,7 @@ contract Vault4626Extruction is IExtruction, IStaticExtruction, IExtructionV102,
         IERC4626 vaultContract = IERC4626(vault);
         asset = vaultContract.asset();
         if (asset == address(0) || asset.code.length == 0) revert InvalidAsset(asset);
+        if (asset == vault) revert SelfReferentialAsset(vault);
 
         uint8 shareDecimals = vaultContract.decimals();
         if (shareDecimals > MAX_SAFE_DECIMALS) revert InvalidShareDecimals(shareDecimals);
@@ -190,6 +193,9 @@ contract Vault4626Extruction is IExtruction, IStaticExtruction, IExtructionV102,
         uint256 amountIn,
         uint256 amountOut
     ) private pure {
+        uint256 specifiedAmount = isExactIn ? amountIn : amountOut;
+        if (specifiedAmount == 0) revert ZeroSpecifiedAmount(isExactIn);
+
         uint256 populatedAmount = isExactIn ? amountOut : amountIn;
         if (populatedAmount != 0) revert RecomputeDetected(isExactIn, populatedAmount);
     }
