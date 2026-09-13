@@ -8,16 +8,17 @@
     "aqua": "tsx scripts/aqua.ts",
     "build": "npm run build --workspace frontend",
     "lint": "npm run lint --workspace frontend",
-    "typecheck": "npm run typecheck --workspace frontend"
+    "typecheck": "tsc --project tsconfig.scripts.json && npm run typecheck --workspace frontend"
   },
   "dependencies": {
     "@1inch/aqua-sdk": "0.3.4",
     "@1inch/swap-vm-sdk": "0.4.4",
     "@openzeppelin/contracts": "^5.6.1",
-    "forge-std": "^1.1.2",
     "viem": "2.56.5"
   },
   "devDependencies": {
+    "@types/node": "26.5.1",
+    "forge-std": "github:foundry-rs/forge-std#v1.16.2",
     "tsx": "4.23.13",
     "typescript": "7.0.2"
   },
