@@ -36,7 +36,7 @@ export const networks = {
   local: {
     chain: anvil,
     label: "Local fork",
-    rpcUrl: process.env.NEXT_PUBLIC_LOCAL_RPC_URL ?? "http://127.0.0.1:8545",
+    rpcUrl: "/api/rpc/local",
   },
 } as const;
 

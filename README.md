@@ -63,11 +63,15 @@ npm run aqua -- prepare --rpc-url http://127.0.0.1:8545
 To use the UI, create `frontend/.env.local`:
 
 ```dotenv
-NEXT_PUBLIC_LOCAL_RPC_URL=http://127.0.0.1:8545
+LOCAL_RPC_URL=http://127.0.0.1:8545
 NEXT_PUBLIC_EXTRUCTION_ADDRESS=<printed-extruction>
 ```
 
 Then run `npm run dev --workspace frontend`, select **Local fork**, and paste the printed vault address.
+
+The browser reaches Anvil through the fixed same-origin `/api/rpc/local` relay. Set `LOCAL_RPC_URL` on the
+Next.js server when Anvil is not listening on the default `http://127.0.0.1:8545`; the relay never accepts a
+user-supplied upstream URL.
 
 This local script demonstrates vault pricing and instruction construction. It does not deploy the official Aqua or SwapVM contracts, so it is not by itself an end-to-end Aqua fill environment.
 
