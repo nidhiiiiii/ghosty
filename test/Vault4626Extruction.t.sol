@@ -46,6 +46,22 @@ contract VaultStub {
     }
 }
 
+contract SelfReferentialVault {
+    function asset() external view returns (address) {
+        return address(this);
+    }
+
+    function decimals() external pure returns (uint8) {
+        return 18;
+    }
+
+    function convertToAssets(
+        uint256 shares
+    ) external pure returns (uint256) {
+        return shares;
+    }
+}
+
 contract Vault4626ExtructionTest is Test {
     uint256 private constant BPS = 10_000;
     uint16 private constant SPREAD = 15;
@@ -219,6 +235,24 @@ contract Vault4626ExtructionTest is Test {
         );
     }
 
+    function testZeroExactInputReverts() external {
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.ZeroSpecifiedAmount.selector, true));
+        _quoteCurrent(
+            _query(address(vault), address(asset), true),
+            _registers(type(uint256).max, 0, 0),
+            _config(SPREAD, ASSET_UNIT, ASSET_UNIT)
+        );
+    }
+
+    function testZeroExactOutputReverts() external {
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.ZeroSpecifiedAmount.selector, false));
+        _quoteCurrent(
+            _query(address(vault), address(asset), false),
+            _registers(type(uint256).max, 0, 0),
+            _config(SPREAD, ASSET_UNIT, ASSET_UNIT)
+        );
+    }
+
     function testTinyShareAmountThatRoundsToZeroReverts() external {
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.AmountRoundsToZero.selector, 1));
         _quoteCurrent(
@@ -278,6 +312,12 @@ contract Vault4626ExtructionTest is Test {
     function testRejectsAssetWithoutCode() external {
         VaultStub badVault = new VaultStub(address(1), 18, 1e18);
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidAsset.selector, address(1)));
+        target.currentRate(address(badVault));
+    }
+
+    function testRejectsSelfReferentialVaultAsset() external {
+        SelfReferentialVault badVault = new SelfReferentialVault();
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.SelfReferentialAsset.selector, address(badVault)));
         target.currentRate(address(badVault));
     }
 
