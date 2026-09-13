@@ -1,6 +1,6 @@
 agent-tools/
 terminals/
-lib/
+/lib/
 out/
 cache/
 broadcast/
