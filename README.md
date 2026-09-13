@@ -10,7 +10,7 @@ This repository is a demo, not audited production software.
 - `AquiferStrategy`: byte encoding for both the deployed/tagged SwapVM v1.0.2 Extruction ABI and current SwapVM main.
 - Foundry deployment scripts for local mocks, a mainnet fork, and optional Sepolia mocks.
 - An official-SDK TypeScript CLI that prepares orders, ships Aqua allocations, quotes, and submits fills.
-- A read-only Next.js strategy builder. It reads vault metadata directly from an RPC and copies a CLI command; it deliberately does not submit strategy calldata from the browser.
+- A Next.js strategy builder. It reads vault metadata from an RPC, quotes through the live SwapVM router, and copies a CLI ship command. The browser does not submit strategy calldata.
 
 ## Requirements and setup
 
@@ -103,7 +103,7 @@ npm run aqua -- quote --rpc-url <url>
 npm run aqua -- fill  --rpc-url <url>
 ```
 
-`ship` needs `MAKER_PRIVATE_KEY`, plus maker-owned balances configured by `SHARE_LIQUIDITY` and `ASSET_LIQUIDITY`. `quote` needs `MAKER_ADDRESS`; `fill` additionally needs `TAKER_PRIVATE_KEY`. `VAULT` and `EXTRUCTION_TARGET` are always required. The default Aqua and router addresses can be overridden with `AQUA_ADDRESS` and `AQUA_ROUTER`.
+`ship` needs `MAKER_PRIVATE_KEY`, plus maker-owned balances configured by `SHARE_LIQUIDITY` and `ASSET_LIQUIDITY`. `quote` needs `MAKER_ADDRESS`; `fill` additionally needs `TAKER_PRIVATE_KEY`. `VAULT` and `EXTRUCTION_TARGET` are always required. On Sepolia the CLI targets the live first-vanity SwapVM router `0x1111113db0e0ef9d0e3a50d5f094a3a57a26c0de` (the mainnet-style vanity `0x111111338c…C0De` is empty there). Override with `AQUA_ADDRESS` and `AQUA_ROUTER`.
 
 A fork preserves contract state but does not automatically give an Anvil account suitable token balances, approvals, or a resolver credential. Fund or impersonate appropriate accounts before claiming an end-to-end fill.
 
@@ -118,7 +118,7 @@ forge script script/DeploySepoliaDemo.s.sol:DeploySepoliaDemo \
   --broadcast
 ```
 
-It deploys a permissionless mock token, mock vault, and the custom Extruction, then prints both instruction layouts. Do not put real value in the mocks. This script does not deploy Aqua or SwapVM; shipping and filling require compatible protocol deployments and the corresponding addresses.
+It deploys a mock token, mock vault, and the custom Extruction, then prints both instruction layouts. Do not put real value in the mocks. Aqua and SwapVM are already on Sepolia; ship and quote against the first-vanity router. Fills still need a resolver KYC NFT.
 
 ## Architecture
 
@@ -148,8 +148,9 @@ stale value. Fork tests verify `0x20` directly against the deployed Aqua router,
 ## Limitations and security
 
 - The contracts and app are unaudited and intended for demonstration.
-- ERC-4626 conversion rates can be manipulated through donations or vault-specific accounting. Bounds are a circuit breaker, not an oracle or manipulation proof.
-- Tokens with transfer fees, rebasing behavior, unusual metadata, or non-standard ERC-4626 semantics have not been qualified.
+- ERC-4626 conversion rates can still move inside a strategy. The Extruction now rejects any min/max band wider than ±1% around the live rate, checks both `balanceIn` and `balanceOut`, and can restrict vaults through an owner allowlist. That is still not an oracle.
+- Deployed Aqua must be encoded with opcode `0x20`. Opcode `0x04` is only for current SwapVM main and will not reach the Extruction on the live router.
+- Demo mock tokens no longer have a public `mint`. Only the deployer can mint. They are still not real assets.
 - The frontend preview uses integer arithmetic but is not an executable quote and does not model gas, transaction ordering, or state changes before inclusion.
 - The UI only connects a wallet to identify the account/network and copy a command. It does not ship or fill.
 - Public RPC endpoints are rate limited and unsuitable for reliable production service.
@@ -167,4 +168,11 @@ stale value. Fork tests verify `0x20` directly against the deployed Aqua router,
 
 The installed Aqua and SwapVM SDK releases pin adjacent versions of `@1inch/sdk-core`. The CLI crosses that package boundary by reconstructing Aqua's exported `Address` and `HexString` values from canonical hex, rather than relying on unsafe casts.
 
-No other sponsor integration is implemented. In particular, the current frontend reads RPC endpoints directly and does not use The Graph; any broader sponsor ideas in `STRATEGY.md` are planning notes, not shipped functionality.
+### The Graph
+
+- The desk discovers maker inventory from Messari **Yield Aggregator** Standardized Subgraphs (Yearn v2, Gamma, Ribbon) through The Graph gateway. One GraphQL query shape, three protocols.
+- Selecting an indexed vault still prices the fill from the vault's live `convertToAssets` call. Graph TVL is the discovery and depth signal, not the swap oracle.
+- After a mainnet vault loads, `/api/graph/token` asks The Graph **Token API** for share-token holders and transfer count so the ticket can show whether the inventory is actually held.
+- Set `GRAPH_API_KEY` from [Subgraph Studio](https://thegraph.com/studio/apikeys/) in `frontend/.env.local`. Mocked or hardcoded vault lists do not qualify.
+
+No other sponsor integration is implemented.
