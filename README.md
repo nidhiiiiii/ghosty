@@ -141,6 +141,9 @@ SwapVM router ──Extruction opcode──> Vault4626Extruction
 ```
 
 The instruction is `opcode || 0x94 || target || abi.encode(vault, spreadBps, minRate, maxRate)`. Opcode `0x20` targets the deployed/tagged v1.0.2 layout; `0x04` targets current SwapVM main. These layouts are not interchangeable.
+The installed SDK's legacy regular-program table still assigns Extruction to `0x21`; Aquifer does not use that
+stale value. Fork tests verify `0x20` directly against the deployed Aqua router, while `0x04` is pinned to
+`Opcode.Extruction` in official SwapVM source commit `afd99c408b4ed610027f4426c6f98650acac9f5f`.
 
 ## Limitations and security
 
