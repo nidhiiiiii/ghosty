@@ -1,0 +1,16 @@
+agent-tools/
+terminals/
+lib/
+out/
+cache/
+broadcast/
+.env
+.env.*
+!.env.example
+node_modules/
+frontend/.next/
+frontend/out/
+*.tsbuildinfo
+*.log
+coverage/
+.DS_Store
