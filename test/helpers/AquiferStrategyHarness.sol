@@ -45,4 +45,14 @@ contract AquiferStrategyHarness {
     ) external pure returns (bytes memory) {
         return AquiferStrategy.buildV102(target, vault, spreadBps, minRate, maxRate);
     }
+
+    function buildDeployed(
+        address target,
+        address vault,
+        uint16 spreadBps,
+        uint256 minRate,
+        uint256 maxRate
+    ) external pure returns (bytes memory) {
+        return AquiferStrategy.buildDeployed(target, vault, spreadBps, minRate, maxRate);
+    }
 }

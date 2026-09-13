@@ -101,7 +101,8 @@ contract AquiferStrategyEncodingTest is AquiferTestBase {
 
     /// @dev The config slice carved out of a built instruction must be accepted verbatim by the Extruction.
     function test_encodedInstruction_configSliceIsAcceptedByExtruction() public view {
-        bytes memory ix = strategy.buildV102(TARGET, address(vault), 25, 900_000, 1_100_000);
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        bytes memory ix = strategy.buildV102(TARGET, address(vault), 25, minRate, maxRate);
         bytes memory args = new bytes(128);
         for (uint256 i = 0; i < 128; ++i) {
             args[i] = ix[22 + i];
@@ -114,6 +115,13 @@ contract AquiferStrategyEncodingTest is AquiferTestBase {
         );
         // fair = 1_000_000; out = floor(1_000_000 * 9_975 / 10_000) = 997_500
         assertEq(r.amountOut, 997_500, "the instruction's own config bytes must price correctly");
+    }
+
+    function test_buildDeployedMatchesV102() public view {
+        assertEq(
+            keccak256(strategy.buildDeployed(TARGET, CFG_VAULT, 15, 900_000, 1_200_000)),
+            keccak256(strategy.buildV102(TARGET, CFG_VAULT, 15, 900_000, 1_200_000))
+        );
     }
 
     function test_buildRejectsZeroTarget() public {

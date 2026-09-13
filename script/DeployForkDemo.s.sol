@@ -21,21 +21,22 @@ contract DeployForkDemo is Script {
         uint256 spread = vm.envOr("SPREAD_BPS", uint256(15));
         uint256 bound = vm.envOr("BOUND_BPS", uint256(100));
         if (spread > type(uint16).max) revert InvalidSpread(spread);
-        if (bound >= BPS) revert InvalidBound(bound);
+        if (bound == 0 || bound > 100) revert InvalidBound(bound);
         // forge-lint: disable-next-line(unsafe-typecast)
         uint16 spreadBps = uint16(spread); // Safe after the explicit bound check above.
 
         vm.startBroadcast(privateKey);
         Vault4626Extruction target = new Vault4626Extruction();
+        target.setVaultAllowed(vault, true);
+        target.setAllowlistEnabled(true);
         vm.stopBroadcast();
 
         (uint256 rate, uint256 shareUnit, address asset) = target.currentRate(vault);
         uint256 minRate = Math.mulDiv(rate, BPS - bound, BPS);
         uint256 maxRate = Math.mulDiv(rate, BPS + bound, BPS, Math.Rounding.Ceil);
 
-        bytes memory currentInstruction =
-            AquiferStrategy.buildCurrent(address(target), vault, spreadBps, minRate, maxRate);
-        bytes memory v102Instruction = AquiferStrategy.buildV102(address(target), vault, spreadBps, minRate, maxRate);
+        bytes memory deployedInstruction =
+            AquiferStrategy.buildDeployed(address(target), vault, spreadBps, minRate, maxRate);
 
         console2.log("Vault:", vault);
         console2.log("Asset:", asset);
@@ -44,9 +45,7 @@ contract DeployForkDemo is Script {
         console2.log("Min rate:", minRate);
         console2.log("Max rate:", maxRate);
         console2.log("Vault4626Extruction:", address(target));
-        console2.log("Current-main instruction (opcode 0x04):");
-        console2.logBytes(currentInstruction);
-        console2.log("Tagged-v1.0.2 instruction (opcode 0x20):");
-        console2.logBytes(v102Instruction);
+        console2.log("Deployed Aqua instruction (opcode 0x20). Do not use 0x04 against the live router.");
+        console2.logBytes(deployedInstruction);
     }
 }

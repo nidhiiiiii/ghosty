@@ -34,6 +34,8 @@ contract DeployLocalDemo is Script {
         if (!asset.approve(address(vault), principal)) revert TokenOperationFailed();
         if (vault.deposit(principal, deployer) == 0) revert ZeroShares();
         if (!asset.transfer(address(vault), donatedYield)) revert TokenOperationFailed();
+        target.setVaultAllowed(address(vault), true);
+        target.setAllowlistEnabled(true);
         vm.stopBroadcast();
 
         (uint256 rate, uint256 shareUnit, address rateAsset) = target.currentRate(address(vault));
@@ -41,19 +43,15 @@ contract DeployLocalDemo is Script {
         uint256 minRate = Math.mulDiv(rate, 9_900, BPS);
         uint256 maxRate = Math.mulDiv(rate, 10_100, BPS, Math.Rounding.Ceil);
 
-        bytes memory currentInstruction =
-            AquiferStrategy.buildCurrent(address(target), address(vault), SPREAD_BPS, minRate, maxRate);
-        bytes memory v102Instruction =
-            AquiferStrategy.buildV102(address(target), address(vault), SPREAD_BPS, minRate, maxRate);
+        bytes memory deployedInstruction =
+            AquiferStrategy.buildDeployed(address(target), address(vault), SPREAD_BPS, minRate, maxRate);
 
         console2.log("Asset:", address(asset));
         console2.log("Vault:", address(vault));
         console2.log("Vault4626Extruction:", address(target));
         console2.log("Share unit:", shareUnit);
         console2.log("Asset units per share unit:", rate);
-        console2.log("Current-main instruction (opcode 0x04):");
-        console2.logBytes(currentInstruction);
-        console2.log("Tagged-v1.0.2 instruction (opcode 0x20):");
-        console2.logBytes(v102Instruction);
+        console2.log("Deployed Aqua instruction (opcode 0x20). Do not use 0x04 against the live router.");
+        console2.logBytes(deployedInstruction);
     }
 }

@@ -10,7 +10,7 @@ import {AquiferStrategy} from "../src/libraries/AquiferStrategy.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockERC4626} from "../src/mocks/MockERC4626.sol";
 
-/// @notice Optional public demo deployment. Never use these permissionless mocks for real value.
+/// @notice Optional public demo deployment. The mock token mints only from the deployer.
 contract DeploySepoliaDemo is Script {
     uint256 private constant BPS = 10_000;
     uint16 private constant SPREAD_BPS = 15;
@@ -36,6 +36,8 @@ contract DeploySepoliaDemo is Script {
         if (!asset.approve(address(vault), principal)) revert TokenOperationFailed();
         if (vault.deposit(principal, deployer) == 0) revert ZeroShares();
         if (!asset.transfer(address(vault), donatedYield)) revert TokenOperationFailed();
+        target.setVaultAllowed(address(vault), true);
+        target.setAllowlistEnabled(true);
         vm.stopBroadcast();
 
         (uint256 rate, uint256 shareUnit,) = target.currentRate(address(vault));
@@ -47,9 +49,7 @@ contract DeploySepoliaDemo is Script {
         console2.log("Vault4626Extruction:", address(target));
         console2.log("Share unit:", shareUnit);
         console2.log("Live rate:", rate);
-        console2.log("Deployed-router instruction (v1.0.2):");
-        console2.logBytes(AquiferStrategy.buildV102(address(target), address(vault), SPREAD_BPS, minRate, maxRate));
-        console2.log("Current-main instruction:");
-        console2.logBytes(AquiferStrategy.buildCurrent(address(target), address(vault), SPREAD_BPS, minRate, maxRate));
+        console2.log("Deployed Aqua instruction (opcode 0x20). Do not use 0x04 against the live router.");
+        console2.logBytes(AquiferStrategy.buildDeployed(address(target), address(vault), SPREAD_BPS, minRate, maxRate));
     }
 }

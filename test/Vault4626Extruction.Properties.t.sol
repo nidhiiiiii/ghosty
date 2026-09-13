@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-Degensoft-SwapVM-1.1
 pragma solidity 0.8.30;
 
+import {stdError} from "forge-std/StdError.sol";
+
 import {IStaticExtruction, SwapQuery, SwapRegisters} from "../src/interfaces/ISwapVMExtruction.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {AquiferTestBase} from "./helpers/AquiferTestBase.sol";
@@ -41,7 +43,7 @@ contract Vault4626ExtructionPropertiesTest is AquiferTestBase {
                 DEFAULT_PC,
                 query(tokenIn, tokenOut, isExactIn),
                 registers(isExactIn, amount, type(uint256).max, type(uint256).max),
-                config(address(vault), spreadBps, 1, type(uint256).max),
+                tightConfig(address(vault), spreadBps, vault.ratePerShareUnit()),
                 ""
             ) returns (
             uint256, uint256, SwapRegisters memory r
@@ -322,6 +324,37 @@ contract Vault4626ExtructionPropertiesTest is AquiferTestBase {
         }
     }
 
+    /// @dev A successful quote must never demand more input than the input balance register allows.
+    function testFuzz_quotedInputNeverExceedsBalanceIn(
+        uint256 amountSeed,
+        uint256 balanceSeed,
+        uint16 spreadSeed,
+        bool sharesIn,
+        bool isExactIn
+    ) public view {
+        uint256 amount = bound(amountSeed, 1, MAX_AMOUNT);
+        uint256 balanceIn = bound(balanceSeed, 0, MAX_AMOUNT);
+        uint16 spread = uint16(bound(spreadSeed, 0, 9_999));
+        (address tokenIn, address tokenOut) =
+            sharesIn ? (address(vault), address(usdc)) : (address(usdc), address(vault));
+
+        try IStaticExtruction(address(ext))
+            .extruction(
+                true,
+                DEFAULT_PC,
+                query(tokenIn, tokenOut, isExactIn),
+                registers(isExactIn, amount, balanceIn, type(uint256).max),
+                tightConfig(address(vault), spread, vault.ratePerShareUnit()),
+                ""
+            ) returns (
+            uint256, uint256, SwapRegisters memory r
+        ) {
+            assertLe(r.amountIn, balanceIn, "a successful quote must fit inside balanceIn");
+        } catch {
+            return;
+        }
+    }
+
     /// @dev A successful quote must never promise more output than the maker's balance register allows.
     function testFuzz_quotedOutputNeverExceedsBalanceOut(
         uint256 amountSeed,
@@ -342,7 +375,7 @@ contract Vault4626ExtructionPropertiesTest is AquiferTestBase {
                 DEFAULT_PC,
                 query(tokenIn, tokenOut, isExactIn),
                 registers(isExactIn, amount, type(uint256).max, balanceOut),
-                config(address(vault), spread, 1, type(uint256).max),
+                tightConfig(address(vault), spread, vault.ratePerShareUnit()),
                 ""
             ) returns (
             uint256, uint256, SwapRegisters memory r
@@ -392,6 +425,7 @@ contract Vault4626ExtructionPropertiesTest is AquiferTestBase {
     ///      arithmetic panic (0x11) raised inside `Math.mulDiv`, not one of the Extruction's named errors.
     function test_extremes_exactOutOverflowRevertsInMulDiv() public {
         vault.setRate(1e18);
+        uint256 rate = vault.ratePerShareUnit();
         (address tokenIn, address tokenOut) = (address(vault), address(usdc));
         vm.expectRevert(stdError.arithmeticError);
         IStaticExtruction(address(ext)).extruction(
@@ -399,13 +433,14 @@ contract Vault4626ExtructionPropertiesTest is AquiferTestBase {
             DEFAULT_PC,
             query(tokenIn, tokenOut, false),
             registers(false, type(uint256).max, type(uint256).max, type(uint256).max),
-            config(address(vault), 15, 1, type(uint256).max),
+            tightConfig(address(vault), 15, rate),
             ""
         );
     }
 
     function test_extremes_exactInOverflowRevertsInMulDiv() public {
         vault.setRate(type(uint256).max);
+        uint256 rate = vault.ratePerShareUnit();
         (address tokenIn, address tokenOut) = (address(vault), address(usdc));
         vm.expectRevert(stdError.arithmeticError);
         IStaticExtruction(address(ext)).extruction(
@@ -413,7 +448,7 @@ contract Vault4626ExtructionPropertiesTest is AquiferTestBase {
             DEFAULT_PC,
             query(tokenIn, tokenOut, true),
             registers(true, type(uint256).max, type(uint256).max, type(uint256).max),
-            config(address(vault), 0, 1, type(uint256).max),
+            tightConfig(address(vault), 0, rate),
             ""
         );
     }
@@ -421,17 +456,8 @@ contract Vault4626ExtructionPropertiesTest is AquiferTestBase {
     /// @dev A zero-spread exact-out at the maximum representable output is exactly representable.
     function test_extremes_zeroSpreadExactOutAtUint256Max() public {
         vault.setRate(1e18);
-        (uint256 amountIn, uint256 amountOut) = priceCurrent(
-            address(vault),
-            address(usdc),
-            true,
-            false,
-            type(uint256).max,
-            0,
-            1,
-            type(uint256).max,
-            type(uint256).max
-        );
+        (uint256 amountIn, uint256 amountOut) =
+            priceTight(address(vault), address(usdc), true, false, type(uint256).max, 0, type(uint256).max);
         assertEq(amountOut, type(uint256).max);
         assertEq(amountIn, type(uint256).max, "at a 1:1 rate with no spread the extremes round-trip");
     }
@@ -448,13 +474,14 @@ contract Vault4626ExtructionPropertiesTest is AquiferTestBase {
         (bool ok,,) = _tryQuote(true, true, 1e18, 0);
         // Either it prices, or it refuses for a rounding/overflow reason - never for a bounds reason.
         if (!ok) {
+            bytes memory args = tightConfig(address(vault), 0, rate);
             vm.expectRevert();
             IStaticExtruction(address(ext)).extruction(
                 true,
                 DEFAULT_PC,
                 query(address(vault), address(usdc), true),
                 registers(true, 1e18, type(uint256).max, type(uint256).max),
-                config(address(vault), 0, 1, type(uint256).max),
+                args,
                 ""
             );
         }

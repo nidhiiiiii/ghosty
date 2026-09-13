@@ -55,13 +55,13 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
     // exact-in 100e6 shares: fair = 100e6; out = floor(100e6 * 9_985 / 10_000) = 99_850_000
     function test_realVault_exactInSharesToAssets() public view {
         (, uint256 amountOut) =
-            priceCurrent(address(vault), address(asset6), true, true, 100e6, 15, 900_000, 1_100_000, type(uint256).max);
+            priceTight(address(vault), address(asset6), true, true, 100e6, 15, type(uint256).max);
         assertEq(amountOut, 99_850_000);
     }
 
     function test_realVault_exactInAssetsToShares() public view {
         (, uint256 amountOut) =
-            priceCurrent(address(vault), address(asset6), false, true, 100e6, 15, 900_000, 1_100_000, type(uint256).max);
+            priceTight(address(vault), address(asset6), false, true, 100e6, 15, type(uint256).max);
         assertEq(amountOut, 99_850_000);
     }
 
@@ -72,14 +72,14 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
     /// @dev A 2% yield accrual stays inside the band and must raise the assets paid per share.
     function test_realVault_yieldAccrualInsideBandRepricesUpward() public {
         (, uint256 beforeOut) =
-            priceCurrent(address(vault), address(asset6), true, true, 100e6, 15, 900_000, 1_100_000, type(uint256).max);
+            priceTight(address(vault), address(asset6), true, true, 100e6, 15, type(uint256).max);
 
         asset6.mint(address(vault), SEED_ASSETS * 2 / 100);
         (uint256 rate,,) = ext.currentRate(address(vault));
         assertApproxEqAbs(rate, 1_020_000, 1, "2% accrual moves the rate to ~1.02");
 
         (, uint256 afterOut) =
-            priceCurrent(address(vault), address(asset6), true, true, 100e6, 15, 900_000, 1_100_000, type(uint256).max);
+            priceTight(address(vault), address(asset6), true, true, 100e6, 15, type(uint256).max);
         assertGt(afterOut, beforeOut, "shares must fetch more assets after accrual");
         // OpenZeppelin's virtual assets make the exact rate 1_019_999 here.
         // fair = 101_999_900; out = floor(fair * 9_985 / 10_000) = 101_846_900.
@@ -89,10 +89,10 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
     /// @dev The reverse leg must get *worse* for the taker after accrual: assets buy fewer shares.
     function test_realVault_yieldAccrualMakesSharesMoreExpensive() public {
         (, uint256 beforeOut) =
-            priceCurrent(address(vault), address(asset6), false, true, 100e6, 15, 900_000, 1_100_000, type(uint256).max);
+            priceTight(address(vault), address(asset6), false, true, 100e6, 15, type(uint256).max);
         asset6.mint(address(vault), SEED_ASSETS * 2 / 100);
         (, uint256 afterOut) =
-            priceCurrent(address(vault), address(asset6), false, true, 100e6, 15, 900_000, 1_100_000, type(uint256).max);
+            priceTight(address(vault), address(asset6), false, true, 100e6, 15, type(uint256).max);
         assertLt(afterOut, beforeOut, "100 assets must buy fewer shares once shares are worth more");
     }
 
@@ -114,13 +114,12 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
         (uint256 rateAfter,,) = ext.currentRate(address(vault));
         assertApproxEqAbs(rateAfter, 1_500_000, 1, "a 50% donation inflates the rate by 50%");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, rateAfter, 900_000, 1_100_000)
-        );
+        (uint256 minRate, uint256 maxRate) = bandAround(1e6);
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, rateAfter, minRate, maxRate));
         quoteCurrent(
             query(address(vault), address(asset6), true),
             registers(true, 100e6, type(uint256).max, type(uint256).max),
-            _cfg(15, 900_000, 1_100_000)
+            _cfg(15, minRate, maxRate)
         );
     }
 
@@ -137,20 +136,22 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
             (address tokenIn, address tokenOut) =
                 sharesIn ? (address(vault), address(asset6)) : (address(asset6), address(vault));
 
+            (uint256 minRate, uint256 maxRate) = bandAround(1e6);
             vm.expectRevert(
-                abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, rateAfter, 900_000, 1_100_000)
+                abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, rateAfter, minRate, maxRate)
             );
             quoteCurrent(
                 query(tokenIn, tokenOut, isExactIn),
                 registers(isExactIn, 100e6, type(uint256).max, type(uint256).max),
-                _cfg(15, 900_000, 1_100_000)
+                _cfg(15, minRate, maxRate)
             );
         }
     }
 
-    /// @dev A donation small enough to stay inside the band is *not* blocked. This is the residual
-    ///      exposure the bounds intentionally accept, bounded by maxRate.
-    function test_donationAttack_withinBandIsStillHonoured() public {
+    /// @dev A donation that stays inside a loose historical band is now refused: the live rate
+    ///      must still sit inside a ±1% window of the configured min/max.
+    function test_donationAttack_inBandDonationIsRejected() public {
+        (uint256 minRate, uint256 maxRate) = bandAround(1e6);
         asset6.mint(attacker, SEED_ASSETS);
         vm.prank(attacker);
         assertTrue(asset6.transfer(address(vault), SEED_ASSETS * 5 / 100));
@@ -158,11 +159,14 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
         (uint256 rateAfter,,) = ext.currentRate(address(vault));
         assertApproxEqAbs(rateAfter, 1_050_000, 1);
 
-        (, uint256 amountOut) =
-            priceCurrent(address(vault), address(asset6), true, true, 100e6, 15, 900_000, 1_100_000, type(uint256).max);
-        // OpenZeppelin's virtual assets make the exact rate 1_049_999 here.
-        // fair = 104_999_900; out = floor(fair * 9_985 / 10_000) = 104_842_400.
-        assertEq(amountOut, 104_842_400);
+        vm.expectRevert(
+            abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, rateAfter, minRate, maxRate)
+        );
+        quoteCurrent(
+            query(address(vault), address(asset6), true),
+            registers(true, 100e6, type(uint256).max, type(uint256).max),
+            _cfg(15, minRate, maxRate)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -186,8 +190,7 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
         assertApproxEqAbs(rate, 1e6, 1, "a virtual-offset vault still quotes ~1 asset unit per whole share");
 
         // exact-in one whole share at spread 0 returns the rate itself.
-        (, uint256 amountOut) =
-            priceCurrent(address(offset), address(asset6), true, true, 1e18, 0, 1, type(uint256).max, type(uint256).max);
+        (, uint256 amountOut) = priceTight(address(offset), address(asset6), true, true, 1e18, 0, type(uint256).max);
         assertEq(amountOut, rate);
     }
 
@@ -206,8 +209,7 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
         assertEq(shareUnit, 1e18);
         assertApproxEqAbs(rate, 1.1e18, 1);
 
-        (, uint256 amountOut) =
-            priceCurrent(address(v), address(asset18), true, true, 1e18, 30, 1e18, 1.2e18, type(uint256).max);
+        (, uint256 amountOut) = priceTight(address(v), address(asset18), true, true, 1e18, 30, type(uint256).max);
         // fair = rate; out = floor(rate * 9_970 / 10_000)
         assertEq(amountOut, rate * 9_970 / 10_000);
     }

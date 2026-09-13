@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-Degensoft-SwapVM-1.1
 pragma solidity 0.8.30;
 
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {Vault4626Extruction} from "../../src/Vault4626Extruction.sol";
@@ -122,6 +123,29 @@ abstract contract AquiferTestBase is Test {
         return abi.encode(vault, spreadBps, minRate, maxRate);
     }
 
+    /// @notice Widest band the Extruction will accept around `rate` (±1%).
+    function bandAround(
+        uint256 rate
+    ) internal pure returns (uint256 minRate, uint256 maxRate) {
+        minRate = Math.mulDiv(rate, BPS - 100, BPS);
+        if (minRate == 0) minRate = 1;
+        uint256 maxRise = Math.mulDiv(rate, 100, BPS, Math.Rounding.Ceil);
+        if (type(uint256).max - rate < maxRise) {
+            maxRate = type(uint256).max;
+        } else {
+            maxRate = rate + maxRise;
+        }
+    }
+
+    function tightConfig(
+        address vault,
+        uint16 spreadBps,
+        uint256 rate
+    ) internal pure returns (bytes memory) {
+        (uint256 minRate, uint256 maxRate) = bandAround(rate);
+        return config(vault, spreadBps, minRate, maxRate);
+    }
+
     /// @notice Builds config bytes from raw words so dirty padding and wrong lengths can be injected.
     function rawConfig(
         uint256 w0,
@@ -217,6 +241,20 @@ abstract contract AquiferTestBase is Test {
             config(vault, spreadBps, minRate, maxRate)
         );
         return (r.amountIn, r.amountOut);
+    }
+
+    function priceTight(
+        address vault,
+        address asset,
+        bool sharesIn,
+        bool isExactIn,
+        uint256 specifiedAmount,
+        uint16 spreadBps,
+        uint256 balanceOut
+    ) internal view returns (uint256 amountIn, uint256 amountOut) {
+        (uint256 rate,,) = ext.currentRate(vault);
+        (uint256 minRate, uint256 maxRate) = bandAround(rate);
+        return priceCurrent(vault, asset, sharesIn, isExactIn, specifiedAmount, spreadBps, minRate, maxRate, balanceOut);
     }
 
     function assertRegistersUntouched(

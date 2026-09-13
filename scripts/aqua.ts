@@ -30,6 +30,7 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const AQUA = "0x1111113ccf1426a8e30e2bff5e005d929bf6a90a";
 const ROUTER = "0x111111338c5091e8440b67b168bae16a668ac0de";
+const SEPOLIA_ROUTER = "0x1111113db0e0ef9d0e3a50d5f094a3a57a26c0de";
 const BPS = 10_000n;
 
 const vaultAbi = [
@@ -115,12 +116,13 @@ async function context() {
   const chainId = await client.getChainId();
   const vault = assertAddress("VAULT", required("VAULT"));
   const target = assertAddress("EXTRUCTION_TARGET", required("EXTRUCTION_TARGET"));
-  const router = assertAddress("AQUA_ROUTER", process.env.AQUA_ROUTER ?? ROUTER);
+  const defaultRouter = chainId === 11_155_111 ? SEPOLIA_ROUTER : ROUTER;
+  const router = assertAddress("AQUA_ROUTER", process.env.AQUA_ROUTER ?? defaultRouter);
   const aquaAddress = assertAddress("AQUA_ADDRESS", process.env.AQUA_ADDRESS ?? AQUA);
   const spreadBps = integer("SPREAD_BPS", 15);
   const boundBps = integer("BOUND_BPS", 100);
   if (spreadBps >= Number(BPS)) throw new Error("SPREAD_BPS must be below 10,000.");
-  if (boundBps <= 0 || boundBps >= Number(BPS)) throw new Error("BOUND_BPS must be between 1 and 9,999.");
+  if (boundBps <= 0 || boundBps > 100) throw new Error("BOUND_BPS must be between 1 and 100.");
 
   const [asset, shareDecimals] = await Promise.all([
     client.readContract({ address: vault, abi: vaultAbi, functionName: "asset" }),
@@ -141,6 +143,9 @@ async function context() {
   );
   const layout = process.env.ROUTER_LAYOUT ?? "deployed";
   if (layout !== "deployed" && layout !== "current") throw new Error("ROUTER_LAYOUT must be deployed or current.");
+  if (layout === "current" && (chainId === 1 || chainId === 11_155_111) && router.toLowerCase() === ROUTER) {
+    throw new Error("Deployed Aqua on this chain uses opcode 0x20. Set ROUTER_LAYOUT=deployed.");
+  }
   const programHex = concatHex([layout === "deployed" ? "0x20" : "0x04", "0x94", target, config]);
 
   return {
@@ -219,6 +224,19 @@ async function ship() {
     ],
   });
   const wallet = createWalletClient({ account: maker, transport: http(ctx.rpcUrl) });
+  const max = (1n << 256n) - 1n;
+  for (const token of [ctx.vault, ctx.asset] as const) {
+    const approval = await wallet.writeContract({
+      account: maker,
+      chain: null,
+      address: token,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [ctx.aquaAddress, max],
+    });
+    await ctx.client.waitForTransactionReceipt({ hash: approval });
+    console.log(`Aqua approval:      ${approval} (${token})`);
+  }
 
   printContext(ctx);
   console.log(`Order:              ${order.encode().toString()}`);
@@ -269,6 +287,24 @@ async function quote(fill = false) {
     functionName: "quote",
     data: result.data,
   });
+
+  if (!fill && (process.argv.includes("--json") || process.env.AQUA_JSON === "1")) {
+    const outputDecimals = sharesIn ? ctx.assetDecimals : ctx.shareDecimals;
+    console.log(JSON.stringify({
+      chainId: ctx.chainId,
+      router: ctx.router,
+      aqua: ctx.aquaAddress,
+      vault: ctx.vault,
+      asset: ctx.asset,
+      target: ctx.target,
+      program: ctx.programHex,
+      amountIn: amountIn.toString(),
+      amountOut: amountOut.toString(),
+      formattedOut: formatUnits(amountOut, outputDecimals),
+      orderHash,
+    }));
+    return;
+  }
 
   printContext(ctx);
   console.log(`Quote amount in:    ${amountIn}`);

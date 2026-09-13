@@ -18,7 +18,7 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
     }
 
     function _ok() internal view returns (bytes memory) {
-        return config(address(vault), 15, 900_000, 1_100_000);
+        return tightConfig(address(vault), 15, 1_000_000);
     }
 
     function _quoteShares(
@@ -75,25 +75,27 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
     //////////////////////////////////////////////////////////////*/
 
     function test_malformedConfig_dirtyVaultPadding_reverts() public {
-        bytes memory args = rawConfig(uint256(uint160(address(vault))) | (uint256(1) << 160), 15, 900_000, 1_100_000);
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        bytes memory args = rawConfig(uint256(uint160(address(vault))) | (uint256(1) << 160), 15, minRate, maxRate);
         vm.expectRevert(Vault4626Extruction.MalformedConfig.selector);
         _quoteShares(1e18, args);
     }
 
     function test_malformedConfig_dirtySpreadPadding_reverts() public {
-        bytes memory args = rawConfig(uint256(uint160(address(vault))), (uint256(1) << 16) | 15, 900_000, 1_100_000);
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        bytes memory args = rawConfig(uint256(uint160(address(vault))), (uint256(1) << 16) | 15, minRate, maxRate);
         vm.expectRevert(Vault4626Extruction.MalformedConfig.selector);
         _quoteShares(1e18, args);
     }
 
     function test_malformedConfig_topBitOfEachWord_reverts() public {
-        bytes memory dirtyVault =
-            rawConfig(uint256(uint160(address(vault))) | (uint256(1) << 255), 15, 900_000, 1_100_000);
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        bytes memory dirtyVault = rawConfig(uint256(uint160(address(vault))) | (uint256(1) << 255), 15, minRate, maxRate);
         vm.expectRevert(Vault4626Extruction.MalformedConfig.selector);
         _quoteShares(1e18, dirtyVault);
 
         bytes memory dirtySpread =
-            rawConfig(uint256(uint160(address(vault))), uint256(15) | (uint256(1) << 255), 900_000, 1_100_000);
+            rawConfig(uint256(uint160(address(vault))), uint256(15) | (uint256(1) << 255), minRate, maxRate);
         vm.expectRevert(Vault4626Extruction.MalformedConfig.selector);
         _quoteShares(1e18, dirtySpread);
     }
@@ -108,11 +110,12 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
         uint240 spreadDirt
     ) public {
         vm.assume(vaultDirt != 0 || spreadDirt != 0);
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
         bytes memory args = rawConfig(
             uint256(uint160(address(vault))) | (uint256(vaultDirt) << 160),
             uint256(15) | (uint256(spreadDirt) << 16),
-            900_000,
-            1_100_000
+            minRate,
+            maxRate
         );
         vm.expectRevert(Vault4626Extruction.MalformedConfig.selector);
         _quoteShares(1e18, args);
@@ -140,16 +143,19 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
 
     function test_spread_equalToBps_reverts() public {
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidSpread.selector, uint256(10_000)));
-        _quoteShares(1e18, config(address(vault), 10_000, 900_000, 1_100_000));
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        _quoteShares(1e18, config(address(vault), 10_000, minRate, maxRate));
     }
 
     function test_spread_uint16Max_reverts() public {
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidSpread.selector, uint256(65_535)));
-        _quoteShares(1e18, config(address(vault), type(uint16).max, 900_000, 1_100_000));
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        _quoteShares(1e18, config(address(vault), type(uint16).max, minRate, maxRate));
     }
 
     function test_spread_9999_accepted() public view {
-        _quoteShares(1e18, config(address(vault), 9_999, 900_000, 1_100_000));
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        _quoteShares(1e18, config(address(vault), 9_999, minRate, maxRate));
     }
 
     function testFuzz_spread_atOrAboveBpsAlwaysReverts(
@@ -157,7 +163,8 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
     ) public {
         vm.assume(spread >= 10_000);
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidSpread.selector, uint256(spread)));
-        _quoteShares(1e18, config(address(vault), spread, 900_000, 1_100_000));
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        _quoteShares(1e18, config(address(vault), spread, minRate, maxRate));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -184,11 +191,20 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
     }
 
     function test_bounds_rateAtMinIsInclusive() public view {
-        _quoteShares(1e18, config(address(vault), 15, 1_000_000, 2_000_000));
+        (, uint256 maxRate) = bandAround(1_000_000);
+        _quoteShares(1e18, config(address(vault), 15, 1_000_000, maxRate));
     }
 
     function test_bounds_rateAtMaxIsInclusive() public view {
-        _quoteShares(1e18, config(address(vault), 15, 500_000, 1_000_000));
+        (uint256 minRate,) = bandAround(1_000_000);
+        _quoteShares(1e18, config(address(vault), 15, minRate, 1_000_000));
+    }
+
+    function test_bounds_widerThanMaxDeviation_reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(Vault4626Extruction.RateBandTooWide.selector, 900_000, 1_100_000, uint256(100))
+        );
+        _quoteShares(1e18, config(address(vault), 15, 900_000, 1_100_000));
     }
 
     function test_bounds_rateOneBelowMin_reverts() public {
@@ -220,7 +236,8 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
     /// @dev Spread and bounds are validated before the vault is ever touched.
     function test_configValidation_precedesVaultRead() public {
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidSpread.selector, uint256(10_000)));
-        _quoteShares(1e18, config(address(0), 10_000, 900_000, 1_100_000));
+        (uint256 minRate, uint256 maxRate) = bandAround(1_000_000);
+        _quoteShares(1e18, config(address(0), 10_000, minRate, maxRate));
 
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidBounds.selector, 0, 0));
         _quoteShares(1e18, config(address(0), 15, 0, 0));
@@ -232,7 +249,7 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
 
     function test_invalidVault_zeroAddress_reverts() public {
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidVault.selector, address(0)));
-        _quoteShares(1e18, config(address(0), 15, 900_000, 1_100_000));
+        _quoteShares(1e18, tightConfig(address(0), 15, 1_000_000));
 
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidVault.selector, address(0)));
         ext.currentRate(address(0));
@@ -241,7 +258,7 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
     function test_invalidVault_eoa_reverts() public {
         address eoa = makeAddr("eoa");
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidVault.selector, eoa));
-        _quoteShares(1e18, config(eoa, 15, 900_000, 1_100_000));
+        _quoteShares(1e18, tightConfig(eoa, 15, 1_000_000));
     }
 
     function test_invalidAsset_zeroAddress_reverts() public {
@@ -257,13 +274,35 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
         ext.currentRate(address(v));
     }
 
-    /// @dev A contract with code but no ERC-20 behaviour passes the code-length check. Documented as F-07.
-    function test_invalidAsset_codeWithoutErc20Behaviour_isAccepted() public {
+    /// @dev A contract with code but no ERC-20 decimals() is no longer accepted.
+    function test_invalidAsset_codeWithoutErc20Behaviour_reverts() public {
         CodeStub stub = new CodeStub();
         RateVault v = new RateVault(address(stub), 18, 1_000_000);
-        (uint256 rate,, address asset) = ext.currentRate(address(v));
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InvalidAsset.selector, address(stub)));
+        ext.currentRate(address(v));
+    }
+
+    function test_allowlist_rejectsUnknownVault() public {
+        ext.setAllowlistEnabled(true);
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.VaultNotAllowlisted.selector, address(vault)));
+        ext.currentRate(address(vault));
+
+        ext.setVaultAllowed(address(vault), true);
+        (uint256 rate,,) = ext.currentRate(address(vault));
         assertEq(rate, 1_000_000);
-        assertEq(asset, address(stub));
+    }
+
+    function test_allowlist_unauthorizedCallerReverts() public {
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.Unauthorized.selector, makeAddr("stranger")));
+        ext.setAllowlistEnabled(true);
+    }
+
+    function test_mockToken_strangerCannotMint() public {
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(MockERC20.Unauthorized.selector, stranger));
+        usdc.mint(stranger, 1);
     }
 
     function test_zeroVaultRate_reverts() public {
@@ -409,7 +448,7 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
     // fair = 1_000_000, out = floor(1_000_000 * 9_985 / 10_000) = 998_500
     function test_liquidity_exactIn_exactlyEnough_accepted() public view {
         (, uint256 amountOut) =
-            priceCurrent(address(vault), address(usdc), true, true, 1e18, 15, 900_000, 1_100_000, 998_500);
+            priceTight(address(vault), address(usdc), true, true, 1e18, 15, 998_500);
         assertEq(amountOut, 998_500);
     }
 
@@ -418,7 +457,7 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
         quoteCurrent(
             query(address(vault), address(usdc), true),
             registers(true, 1e18, type(uint256).max, 998_499),
-            config(address(vault), 15, 900_000, 1_100_000)
+            tightConfig(address(vault), 15, 1_000_000)
         );
     }
 
@@ -427,13 +466,12 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
         quoteCurrent(
             query(address(vault), address(usdc), true),
             registers(true, 1e18, type(uint256).max, 0),
-            config(address(vault), 15, 900_000, 1_100_000)
+            tightConfig(address(vault), 15, 1_000_000)
         );
     }
 
     function test_liquidity_exactOut_exactlyEnough_accepted() public view {
-        (uint256 amountIn,) =
-            priceCurrent(address(vault), address(usdc), true, false, 500_000, 15, 900_000, 1_100_000, 500_000);
+        (uint256 amountIn,) = priceTight(address(vault), address(usdc), true, false, 500_000, 15, 500_000);
         assertGt(amountIn, 0);
     }
 
@@ -442,7 +480,7 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
         quoteCurrent(
             query(address(vault), address(usdc), false),
             registers(false, 500_000, type(uint256).max, 499_999),
-            config(address(vault), 15, 900_000, 1_100_000)
+            tightConfig(address(vault), 15, 1_000_000)
         );
     }
 
@@ -453,24 +491,19 @@ contract Vault4626ExtructionGuardsTest is AquiferTestBase {
         quoteCurrent(
             query(address(v), address(usdc), true),
             registers(true, 1, type(uint256).max, 0),
-            config(address(v), 0, 1, type(uint256).max)
+            tightConfig(address(v), 0, 1_000_000)
         );
     }
 
-    /// @dev balanceIn is never consulted, so an exact-out quote can demand more input than the maker has.
-    ///      Documented as F-08.
-    function test_liquidity_balanceInIsIgnored() public view {
-        (uint256 amountIn,) =
-            priceCurrent(address(vault), address(usdc), true, false, 998_500, 15, 900_000, 1_100_000, 998_500);
+    function test_liquidity_balanceInTooLow_reverts() public {
+        (uint256 amountIn,) = priceTight(address(vault), address(usdc), true, false, 998_500, 15, 998_500);
         assertEq(amountIn, 1e18);
 
-        // Same quote with balanceIn set to 1 still succeeds.
-        Result memory r = quoteCurrent(
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.InsufficientLiquidity.selector, 1e18, uint256(1)));
+        quoteCurrent(
             query(address(vault), address(usdc), false),
             registers(false, 998_500, 1, 998_500),
-            config(address(vault), 15, 900_000, 1_100_000)
+            tightConfig(address(vault), 15, 1_000_000)
         );
-        assertEq(r.amountIn, 1e18);
-        assertEq(r.balanceIn, 1);
     }
 }

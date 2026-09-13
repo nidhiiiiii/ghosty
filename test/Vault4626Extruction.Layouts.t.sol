@@ -27,7 +27,7 @@ contract Vault4626ExtructionLayoutsTest is AquiferTestBase {
     }
 
     function _cfg() internal view returns (bytes memory) {
-        return config(address(vault), 15, 900_000, 1_200_000);
+        return tightConfig(address(vault), 15, vault.ratePerShareUnit());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -78,12 +78,12 @@ contract Vault4626ExtructionLayoutsTest is AquiferTestBase {
         Result memory a = quoteCurrent(
             query(tokenIn, tokenOut, isExactIn),
             registers(isExactIn, amount, type(uint256).max, type(uint256).max),
-            config(address(vault), spread, 900_000, 1_200_000)
+            tightConfig(address(vault), spread, vault.ratePerShareUnit())
         );
         Result memory b = quoteV102(
             query(tokenIn, tokenOut, isExactIn),
             registersV102(isExactIn, amount, type(uint256).max, type(uint256).max, netPulled),
-            config(address(vault), spread, 900_000, 1_200_000)
+            tightConfig(address(vault), spread, vault.ratePerShareUnit())
         );
 
         assertEq(a.amountIn, b.amountIn, "amountIn must match across layouts");
@@ -95,25 +95,33 @@ contract Vault4626ExtructionLayoutsTest is AquiferTestBase {
 
     function test_v102_preservesAmountNetPulled() public view {
         Result memory r = quoteV102(
-            query(address(vault), address(usdc), true), registersV102(true, 1e18, 123, 10_000_000, 987_654_321), _cfg()
+            query(address(vault), address(usdc), true),
+            registersV102(true, 1e18, type(uint256).max, 10_000_000, 987_654_321),
+            _cfg()
         );
         assertEq(r.amountNetPulled, 987_654_321);
-        assertEq(r.balanceIn, 123);
+        assertEq(r.balanceIn, type(uint256).max);
         assertEq(r.balanceOut, 10_000_000);
     }
 
     function test_v102_balanceRegistersUntouched() public view {
         Result memory r = quoteV102(
-            query(address(usdc), address(vault), false), registersV102(false, 5e17, 4_444, 1e18, 9_999), _cfg()
+            query(address(usdc), address(vault), false),
+            registersV102(false, 5e17, type(uint256).max, 1e18, 9_999),
+            _cfg()
         );
-        assertRegistersUntouched(r, 4_444, 1e18);
+        assertRegistersUntouched(r, type(uint256).max, 1e18);
         assertEq(r.amountNetPulled, 9_999);
     }
 
     function test_current_balanceRegistersUntouched() public view {
         Result memory r =
-            quoteCurrent(query(address(usdc), address(vault), false), registers(false, 5e17, 4_444, 1e18), _cfg());
-        assertRegistersUntouched(r, 4_444, 1e18);
+            quoteCurrent(
+                query(address(usdc), address(vault), false),
+                registers(false, 5e17, type(uint256).max, 1e18),
+                _cfg()
+            );
+        assertRegistersUntouched(r, type(uint256).max, 1e18);
     }
 
     /// @dev nextPC must be echoed for any value the VM might pass.
@@ -192,12 +200,12 @@ contract Vault4626ExtructionLayoutsTest is AquiferTestBase {
         Result memory quoted = quoteCurrent(
             query(tokenIn, tokenOut, isExactIn),
             registers(isExactIn, amount, type(uint256).max, type(uint256).max),
-            config(address(vault), spread, 900_000, 1_200_000)
+            tightConfig(address(vault), spread, vault.ratePerShareUnit())
         );
         Result memory filled = swapCurrent(
             query(tokenIn, tokenOut, isExactIn),
             registers(isExactIn, amount, type(uint256).max, type(uint256).max),
-            config(address(vault), spread, 900_000, 1_200_000)
+            tightConfig(address(vault), spread, vault.ratePerShareUnit())
         );
 
         assertEq(quoted.amountIn, filled.amountIn, "quote and swap amountIn must be identical");
@@ -218,12 +226,12 @@ contract Vault4626ExtructionLayoutsTest is AquiferTestBase {
         Result memory quoted = quoteV102(
             query(tokenIn, tokenOut, isExactIn),
             registersV102(isExactIn, amount, type(uint256).max, type(uint256).max, 42),
-            config(address(vault), spread, 900_000, 1_200_000)
+            tightConfig(address(vault), spread, vault.ratePerShareUnit())
         );
         Result memory filled = swapV102(
             query(tokenIn, tokenOut, isExactIn),
             registersV102(isExactIn, amount, type(uint256).max, type(uint256).max, 42),
-            config(address(vault), spread, 900_000, 1_200_000)
+            tightConfig(address(vault), spread, vault.ratePerShareUnit())
         );
 
         assertEq(quoted.amountIn, filled.amountIn);
@@ -261,45 +269,44 @@ contract Vault4626ExtructionLayoutsTest is AquiferTestBase {
         vm.revertToState(snapshot);
     }
 
-    /// @dev A rate change between quote and fill is reflected, which is the documented reason bounds exist.
+    /// @dev Small drift inside a ±50 bps band still reprices. A max-width ±1% band would reject the same move.
     function test_rateDriftBetweenQuoteAndFillIsReflected() public {
+        bytes memory args = config(address(vault), 15, 1_044_750, 1_055_250);
         Result memory before = quoteCurrent(
             query(address(vault), address(usdc), true),
             registers(true, 1e18, type(uint256).max, type(uint256).max),
-            _cfg()
+            args
         );
         assertEq(before.amountOut, 1_048_425);
 
-        vault.setRate(1_100_000);
-        Result memory after_ = swapCurrent(
+        vault.setRate(1_053_150);
+        Result memory quotedAfter = swapCurrent(
             query(address(vault), address(usdc), true),
             registers(true, 1e18, type(uint256).max, type(uint256).max),
-            _cfg()
+            args
         );
-        // fair = 1_100_000; out = floor(1_100_000 * 9_985 / 10_000) = 1_098_350
-        assertEq(after_.amountOut, 1_098_350);
-        assertGt(after_.amountOut, before.amountOut);
+        uint256 expectedOut = uint256(1_053_150) * 9_985 / 10_000;
+        assertEq(quotedAfter.amountOut, expectedOut);
+        assertGt(quotedAfter.amountOut, before.amountOut);
     }
 
     /// @dev Once drift leaves the configured band, both paths must refuse identically.
     function test_rateDriftOutOfBandRevertsOnBothPaths() public {
-        vault.setRate(1_200_001);
-        vm.expectRevert(
-            abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, 1_200_001, 900_000, 1_200_000)
-        );
+        (uint256 minRate, uint256 maxRate) = bandAround(1_050_000);
+        bytes memory args = config(address(vault), 15, minRate, maxRate);
+        vault.setRate(1_061_000);
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, 1_061_000, minRate, maxRate));
         quoteCurrent(
             query(address(vault), address(usdc), true),
             registers(true, 1e18, type(uint256).max, type(uint256).max),
-            _cfg()
+            args
         );
 
-        vm.expectRevert(
-            abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, 1_200_001, 900_000, 1_200_000)
-        );
+        vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.RateOutOfBounds.selector, 1_061_000, minRate, maxRate));
         swapCurrent(
             query(address(vault), address(usdc), true),
             registers(true, 1e18, type(uint256).max, type(uint256).max),
-            _cfg()
+            args
         );
     }
 }

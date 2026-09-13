@@ -36,7 +36,7 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     function test_exactIn_sharesIn_goldenVector() public {
         RateVault vault = _vault(address(usdc), 18, 1_050_000);
         (uint256 amountIn, uint256 amountOut) =
-            priceCurrent(address(vault), address(usdc), true, true, 1e18, 15, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(usdc), true, true, 1e18, 15, type(uint256).max);
         assertEq(amountIn, 1e18, "exact-in must echo the specified amountIn");
         assertEq(amountOut, 1_048_425, "1 share at 1.05 USDC minus 15bps");
     }
@@ -47,9 +47,8 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     // amountOut= 1e18 * 9985 / 10_000 = 998_500_000_000_000_000
     function test_exactIn_assetsIn_goldenVector() public {
         RateVault vault = _vault(address(usdc), 18, 1_050_000);
-        (uint256 amountIn, uint256 amountOut) = priceCurrent(
-            address(vault), address(usdc), false, true, 1_050_000, 15, 1, type(uint256).max, type(uint256).max
-        );
+        (uint256 amountIn, uint256 amountOut) =
+            priceTight(address(vault), address(usdc), false, true, 1_050_000, 15, type(uint256).max);
         assertEq(amountIn, 1_050_000);
         assertEq(amountOut, 998_500_000_000_000_000, "1.05 USDC buys 0.9985 shares at 15bps");
     }
@@ -60,9 +59,8 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     // amountIn  = ceil(1_050_000 * 1e18 / 1_050_000) = 1e18
     function test_exactOut_sharesIn_goldenVector() public {
         RateVault vault = _vault(address(usdc), 18, 1_050_000);
-        (uint256 amountIn, uint256 amountOut) = priceCurrent(
-            address(vault), address(usdc), true, false, 1_048_425, 15, 1, type(uint256).max, type(uint256).max
-        );
+        (uint256 amountIn, uint256 amountOut) =
+            priceTight(address(vault), address(usdc), true, false, 1_048_425, 15, type(uint256).max);
         assertEq(amountOut, 1_048_425, "exact-out must echo the specified amountOut");
         assertEq(amountIn, 1e18, "exact-out is the exact inverse of the exact-in vector");
     }
@@ -72,17 +70,8 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     // amountIn  = ceil(1e18 * 1_050_000 / 1e18) = 1_050_000
     function test_exactOut_assetsIn_goldenVector() public {
         RateVault vault = _vault(address(usdc), 18, 1_050_000);
-        (uint256 amountIn, uint256 amountOut) = priceCurrent(
-            address(vault),
-            address(usdc),
-            false,
-            false,
-            998_500_000_000_000_000,
-            15,
-            1,
-            type(uint256).max,
-            type(uint256).max
-        );
+        (uint256 amountIn, uint256 amountOut) =
+            priceTight(address(vault), address(usdc), false, false, 998_500_000_000_000_000, 15, type(uint256).max);
         assertEq(amountOut, 998_500_000_000_000_000);
         assertEq(amountIn, 1_050_000);
     }
@@ -95,11 +84,11 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     function test_zeroSpread_isIdentityAtUnitRate() public {
         RateVault vault = _vault(address(weth), 18, 1e18);
         (, uint256 outExactIn) =
-            priceCurrent(address(vault), address(weth), true, true, 12_345, 0, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(weth), true, true, 12_345, 0, type(uint256).max);
         assertEq(outExactIn, 12_345, "zero spread at 1:1 must be the identity");
 
         (uint256 inExactOut,) =
-            priceCurrent(address(vault), address(weth), true, false, 12_345, 0, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(weth), true, false, 12_345, 0, type(uint256).max);
         assertEq(inExactOut, 12_345, "zero spread exact-out must also be the identity");
     }
 
@@ -108,13 +97,11 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     // exact-out: fair = ceil(1 * 10_000 / 1) = 10_000 => in = 10_000
     function test_maximumSpread_9999() public {
         RateVault vault = _vault(address(weth), 18, 1e18);
-        (, uint256 amountOut) = priceCurrent(
-            address(vault), address(weth), true, true, 10_000, 9_999, 1, type(uint256).max, type(uint256).max
-        );
+        (, uint256 amountOut) = priceTight(address(vault), address(weth), true, true, 10_000, 9_999, type(uint256).max);
         assertEq(amountOut, 1, "99.99% spread leaves 1 unit out of 10_000");
 
         (uint256 amountIn,) =
-            priceCurrent(address(vault), address(weth), true, false, 1, 9_999, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(weth), true, false, 1, 9_999, type(uint256).max);
         assertEq(amountIn, 10_000, "buying 1 unit out costs 10_000 in at 99.99% spread");
     }
 
@@ -125,11 +112,11 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     function test_exactIn_spreadRoundsDownInMakerFavour() public {
         RateVault vault = _vault(address(weth), 18, 1e18);
         (, uint256 a) =
-            priceCurrent(address(vault), address(weth), true, true, 10_000, 1, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(weth), true, true, 10_000, 1, type(uint256).max);
         assertEq(a, 9_999);
 
         (, uint256 b) =
-            priceCurrent(address(vault), address(weth), true, true, 9_999, 1, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(weth), true, true, 9_999, 1, type(uint256).max);
         assertEq(b, 9_998);
     }
 
@@ -139,7 +126,7 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     function test_exactOut_spreadRoundsUpInMakerFavour() public {
         RateVault vault = _vault(address(weth), 18, 1e18);
         (uint256 amountIn,) =
-            priceCurrent(address(vault), address(weth), true, false, 1, 1, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(weth), true, false, 1, 1, type(uint256).max);
         assertEq(amountIn, 2, "1-unit exact-out costs 2 units in: rounding must favour the maker");
     }
 
@@ -152,7 +139,7 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     function test_decimals_asset18_share6() public {
         RateVault vault = _vault(address(weth), 6, 1_050_000_000_000_000_000);
         (, uint256 amountOut) =
-            priceCurrent(address(vault), address(weth), true, true, 1e6, 0, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(weth), true, true, 1e6, 0, type(uint256).max);
         assertEq(amountOut, 1_050_000_000_000_000_000);
     }
 
@@ -162,12 +149,12 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
         MockERC20 wei0 = new MockERC20("Zero", "ZERO", 0);
         RateVault vault = _vault(address(wei0), 0, 3);
         (, uint256 amountOut) =
-            priceCurrent(address(vault), address(wei0), true, true, 5, 0, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(wei0), true, true, 5, 0, type(uint256).max);
         assertEq(amountOut, 15);
 
         // exact-out 15 assets: fair = 15, in = ceil(15 * 1 / 3) = 5
         (uint256 amountIn,) =
-            priceCurrent(address(vault), address(wei0), true, false, 15, 0, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(wei0), true, false, 15, 0, type(uint256).max);
         assertEq(amountIn, 5);
     }
 
@@ -177,7 +164,7 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
         uint256 unit77 = 10 ** 77;
         RateVault vault = _vault(address(weth), 77, unit77);
         (, uint256 amountOut) =
-            priceCurrent(address(vault), address(weth), true, true, 1e18, 0, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(weth), true, true, 1e18, 0, type(uint256).max);
         assertEq(amountOut, 1e18, "decimals == MAX_SAFE_DECIMALS must price, not revert");
 
         (uint256 rate, uint256 shareUnit,) = ext.currentRate(address(vault));
@@ -210,7 +197,7 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
         quoteCurrent(
             query(tokenIn, tokenOut, true),
             registers(true, 1e11, type(uint256).max, type(uint256).max),
-            config(address(vault), 0, 1, type(uint256).max)
+            tightConfig(address(vault), 0, 1_000_000)
         );
     }
 
@@ -218,7 +205,7 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     function test_exactIn_smallestNonZeroSharesIn() public {
         RateVault vault = _vault(address(usdc), 18, 1_000_000);
         (, uint256 amountOut) =
-            priceCurrent(address(vault), address(usdc), true, true, 1e12, 0, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(usdc), true, true, 1e12, 0, type(uint256).max);
         assertEq(amountOut, 1, "1e12 share units is exactly one 6-decimal asset unit");
     }
 
@@ -226,7 +213,7 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
     function test_exactOut_oneUnitOutAlwaysCostsAtLeastOneIn() public {
         RateVault vault = _vault(address(usdc), 18, 1_000_000);
         (uint256 amountIn,) =
-            priceCurrent(address(vault), address(usdc), false, false, 1, 0, 1, type(uint256).max, type(uint256).max);
+            priceTight(address(vault), address(usdc), false, false, 1, 0, type(uint256).max);
         // 1 share unit out at 1 USDC/share: fair = 1, in = ceil(1 * 1_000_000 / 1e18) = 1
         assertEq(amountIn, 1);
     }
@@ -239,10 +226,18 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
         RateVault vault = _vault(address(usdc), 18, 1_050_000);
 
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.ZeroSpecifiedAmount.selector, true));
-        priceCurrent(address(vault), address(usdc), true, true, 0, 15, 1, type(uint256).max, 0);
+        quoteCurrent(
+            query(address(vault), address(usdc), true),
+            registers(true, 0, type(uint256).max, 0),
+            tightConfig(address(vault), 15, 1_050_000)
+        );
 
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.ZeroSpecifiedAmount.selector, false));
-        priceCurrent(address(vault), address(usdc), true, false, 0, 15, 1, type(uint256).max, 0);
+        quoteCurrent(
+            query(address(vault), address(usdc), false),
+            registers(false, 0, type(uint256).max, 0),
+            tightConfig(address(vault), 15, 1_050_000)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -261,5 +256,7 @@ contract Vault4626ExtructionPricingTest is AquiferTestBase {
         assertEq(ext.BPS(), 10_000);
         assertEq(ext.CONFIG_LENGTH(), 128);
         assertEq(ext.MAX_SAFE_DECIMALS(), 77);
+        assertEq(ext.MAX_RATE_DEVIATION_BPS(), 100);
+        assertEq(ext.RATE_ROUNDTRIP_BPS(), 10);
     }
 }

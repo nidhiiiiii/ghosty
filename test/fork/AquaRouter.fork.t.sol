@@ -113,11 +113,19 @@ contract AquaRouterForkTest is Test {
         vm.mockCall(AQUA, abi.encodeWithSelector(SAFE_BALANCES_SELECTOR), abi.encode(balanceIn, balanceOut));
     }
 
+    function _bandAround(
+        uint256 rate
+    ) internal pure returns (uint256 minRate, uint256 maxRate) {
+        minRate = rate * 9_900 / 10_000;
+        maxRate = rate + (rate * 100 + 9_999) / 10_000;
+    }
+
     function _program(
         uint8 opcode,
         address target
     ) internal view returns (bytes memory) {
-        bytes memory config = ext.encodeConfig(address(vault), 15, 900_000, 1_100_000);
+        (uint256 minRate, uint256 maxRate) = _bandAround(1e6);
+        bytes memory config = ext.encodeConfig(address(vault), 15, minRate, maxRate);
         return abi.encodePacked(opcode, uint8(148), target, config);
     }
 
@@ -298,7 +306,8 @@ contract AquaRouterForkTest is Test {
             "the deployed Aqua router uses the five-register (v1.0.2) layout; the four-register entry point is dead there"
         );
 
-        bytes memory expectedArgs = ext.encodeConfig(address(vault), 15, 900_000, 1_100_000);
+        (uint256 minRate, uint256 maxRate) = _bandAround(1e6);
+        bytes memory expectedArgs = ext.encodeConfig(address(vault), 15, minRate, maxRate);
         bytes memory body = _stripSelector(inner);
 
         if (isV102) {

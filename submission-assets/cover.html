@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Aquifer cover</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    html, body {
+      margin: 0;
+      width: 1600px;
+      height: 900px;
+      overflow: hidden;
+      background: #070808;
+      color: #f3f4f1;
+      font-family: "Schibsted Grotesk", "Helvetica Neue", sans-serif;
+    }
+    .frame {
+      position: relative;
+      width: 1600px;
+      height: 900px;
+      background:
+        radial-gradient(80rem 40rem at 50% -10%, rgba(243, 244, 241, 0.05), transparent 55%),
+        #070808;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      padding: 0 120px;
+      box-sizing: border-box;
+    }
+    .copy h1 {
+      margin: 0;
+      font-size: 92px;
+      font-weight: 500;
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+    }
+    .rule {
+      width: 72px;
+      height: 2px;
+      background: #d8ff3e;
+      margin: 36px 0 28px;
+    }
+    .tag {
+      margin: 0;
+      font-size: 28px;
+      color: #8d928b;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      position: absolute;
+      left: 120px;
+      bottom: 72px;
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #5c615b;
+    }
+    .mark {
+      justify-self: end;
+      margin-right: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="copy">
+      <h1>Aquifer</h1>
+      <div class="rule"></div>
+      <p class="tag">Still earning. Already liquid.</p>
+    </div>
+    <svg class="mark" width="320" height="320" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M9 1.6 16.4 17h-2.7l-1.2-2.8H5.5L4.3 17H1.6L9 1.6Z" stroke="#d8ff3e" stroke-width="0.55" stroke-linejoin="round" />
+      <path d="M6.4 11.2h5.2" stroke="#d8ff3e" stroke-width="0.55" />
+    </svg>
+    <p class="meta">ERC-4626 · 1inch Aqua · Self-custodial</p>
+  </div>
+</body>
+</html>

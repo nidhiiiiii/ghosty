@@ -40,6 +40,17 @@ library AquiferStrategy {
         return _build(EXTRUCTION_OPCODE_V102, target, encodeConfig(vault, spreadBps, minRate, maxRate));
     }
 
+    /// @notice Instruction for the deployed Aqua router. Same bytes as `buildV102` (opcode 0x20).
+    function buildDeployed(
+        address target,
+        address vault,
+        uint16 spreadBps,
+        uint256 minRate,
+        uint256 maxRate
+    ) internal pure returns (bytes memory) {
+        return buildV102(target, vault, spreadBps, minRate, maxRate);
+    }
+
     function _build(
         uint8 opcode,
         address target,
