@@ -109,7 +109,7 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
 
         asset6.mint(attacker, SEED_ASSETS);
         vm.prank(attacker);
-        asset6.transfer(address(vault), SEED_ASSETS / 2);
+        assertTrue(asset6.transfer(address(vault), SEED_ASSETS / 2));
 
         (uint256 rateAfter,,) = ext.currentRate(address(vault));
         assertApproxEqAbs(rateAfter, 1_500_000, 1, "a 50% donation inflates the rate by 50%");
@@ -128,7 +128,7 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
     function test_donationAttack_blocksEveryLegAndMode() public {
         asset6.mint(attacker, SEED_ASSETS);
         vm.prank(attacker);
-        asset6.transfer(address(vault), SEED_ASSETS / 2);
+        assertTrue(asset6.transfer(address(vault), SEED_ASSETS / 2));
         (uint256 rateAfter,,) = ext.currentRate(address(vault));
 
         for (uint256 i = 0; i < 4; ++i) {
@@ -153,7 +153,7 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
     function test_donationAttack_withinBandIsStillHonoured() public {
         asset6.mint(attacker, SEED_ASSETS);
         vm.prank(attacker);
-        asset6.transfer(address(vault), SEED_ASSETS * 5 / 100);
+        assertTrue(asset6.transfer(address(vault), SEED_ASSETS * 5 / 100));
 
         (uint256 rateAfter,,) = ext.currentRate(address(vault));
         assertApproxEqAbs(rateAfter, 1_050_000, 1);
@@ -228,7 +228,7 @@ contract Vault4626ExtructionErc4626Test is AquiferTestBase {
     function test_realVault_totalLossRevertsZeroVaultRate() public {
         // Burn the vault's entire asset balance out from under the outstanding shares.
         vm.prank(address(vault));
-        asset6.transfer(address(0xdead), SEED_ASSETS);
+        assertTrue(asset6.transfer(address(0xdead), SEED_ASSETS));
         assertEq(asset6.balanceOf(address(vault)), 0);
 
         vm.expectRevert(abi.encodeWithSelector(Vault4626Extruction.ZeroVaultRate.selector, address(vault)));
